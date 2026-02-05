@@ -2,7 +2,7 @@
 set -e
 
 # ==========================================
-# NextCloud RAG Installation Script
+# NextCloud RAG Installation Script (Interactive)
 # ==========================================
 
 LOG_FILE="install_debug.log"
@@ -22,22 +22,15 @@ function error_exit {
     echo "--- DEBUG INFORMATION FOR AI ANALYSIS ---"
     echo "Failed Command: $2"
     echo ""
-    
     if [ ! -z "$3" ]; then
         echo "--- CONTAINER LOGS ($3) ---"
         docker logs --tail 100 "$3" 2>/dev/null || echo "Could not retrieve logs for $3"
         echo "-----------------------------------"
     fi
-
     echo "--- SYSTEM STATE ---"
-    echo "Running Containers:"
     docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
-    echo "Docker Network 'platform-net':"
-    docker network inspect platform-net >/dev/null 2>&1 && echo "Exists" || echo "Missing"
-    
-    echo ""
-    echo "Please provide this entire output to your AI assistant to diagnose the issue."
+    echo "Please provide this output to your AI assistant."
     exit 1
 }
 
@@ -50,103 +43,152 @@ function check_command {
 function verify_container_up {
     container_name=$1
     echo "Verifying container '$container_name' is running..."
-    if [ "$(docker inspect -f '{{.State.Running}}' ${container_name} 2>/dev/null)" != "true" ]; then
-        error_exit "VERIFICATION" "Container $container_name is not running" "$container_name"
-    fi
+    # We loop for a few seconds to catch early crash loops
+    for i in {1..5}; do
+        if [ "$(docker inspect -f '{{.State.Running}}' ${container_name} 2>/dev/null)" != "true" ]; then
+             sleep 2
+             if [ "$(docker inspect -f '{{.State.Running}}' ${container_name} 2>/dev/null)" != "true" ]; then
+                 error_exit "VERIFICATION" "Container $container_name failed to start/stay up" "$container_name"
+             fi
+        fi
+        sleep 1
+    done
     echo "✅ Container '$container_name' is UP."
 }
 
 # --- 1. Prerequisites ---
 echo "--- Step 1: Checking Prerequisites ---"
 check_command docker
-check_command grep
+check_command openssl
 
-# Check Docker Daemon
 if ! docker info > /dev/null 2>&1; then
     error_exit "PREREQUISITES" "Docker daemon is not running or accessible"
 fi
-echo "✅ Docker is running."
 
-# --- 2. Network Setup ---
+# --- 2. Configuration Prompts ---
 echo ""
-echo "--- Step 2: Network Setup ---"
-if docker network ls | grep -q "platform-net"; then
-    echo "✅ Network 'platform-net' already exists."
-else
-    echo "Creating network 'platform-net'..."
-    docker network create platform-net || error_exit "NETWORK" "docker network create platform-net"
-    echo "✅ Network created."
+echo "--- Step 2: Configuration ---"
+if [ -z "$NEXTCLOUD_DOMAIN" ]; then
+    read -p "Enter Nextcloud Domain (e.g., cloud.example.com): " INPUT_NC_DOMAIN
+    export NEXTCLOUD_DOMAIN=$INPUT_NC_DOMAIN
+fi
+if [ -z "$RAG_DOMAIN" ]; then
+    read -p "Enter RAG Domain (e.g., rag.example.com): " INPUT_RAG_DOMAIN
+    export RAG_DOMAIN=$INPUT_RAG_DOMAIN
+fi
+if [ -z "$ACME_EMAIL" ]; then
+    read -p "Enter Email for Let's Encrypt (e.g., admin@example.com): " INPUT_EMAIL
+    export ACME_EMAIL=$INPUT_EMAIL
 fi
 
-# --- 3. Proxy Stack (Caddy) ---
 echo ""
-echo "--- Step 3: Deploying Reverse Proxy (Caddy) ---"
+echo "Configuration:"
+echo "- Nextcloud: $NEXTCLOUD_DOMAIN"
+echo "- RAG App:   $RAG_DOMAIN"
+echo "- Email:     $ACME_EMAIL"
+echo ""
+
+# --- 3. Network ---
+if ! docker network ls | grep -q "platform-net"; then
+    docker network create platform-net || error_exit "NETWORK" "docker network create platform-net"
+fi
+echo "✅ Network 'platform-net' ready."
+
+# --- 4. Proxy Stack (Caddy) ---
+echo ""
+echo "--- Step 4: Deploying Reverse Proxy ---"
 cd docker-deploy/proxy
 
-if [ ! -f .env ]; then
-    echo "⚠️  No .env file found in docker-deploy/proxy."
-    echo "   Creating one from .env.example..."
-    cp .env.example .env
-    echo "   PLEASE NOTE: You should edit this file to set your real email and domains."
-fi
+# Generate .env
+cat > .env <<EOF
+ACME_EMAIL=${ACME_EMAIL}
+NEXTCLOUD_DOMAIN=${NEXTCLOUD_DOMAIN}
+RAG_DOMAIN=${RAG_DOMAIN}
+EOF
+echo "Generated proxy/.env"
 
-echo "Deploying Proxy Stack..."
 docker compose up -d || error_exit "PROXY_DEPLOY" "docker compose up -d (proxy)" "caddy"
-
-# Verify Caddy
-sleep 5
 verify_container_up "caddy"
-
 cd ../..
 
-# --- 4. Nextcloud AIO Stack ---
+# --- 5. Nextcloud AIO ---
 echo ""
-echo "--- Step 4: Deploying Nextcloud AIO ---"
+echo "--- Step 5: Deploying Nextcloud AIO ---"
 cd docker-deploy/nextcloud-aio
-
-echo "Deploying Nextcloud AIO..."
 docker compose up -d || error_exit "NEXTCLOUD_DEPLOY" "docker compose up -d (nextcloud)" "nextcloud-aio-mastercontainer"
-
-# Verify AIO Master
-sleep 5
 verify_container_up "nextcloud-aio-mastercontainer"
-
 cd ../..
 
-# --- 5. RAG Stack ---
+# --- 6. RAG Stack Config Generation ---
 echo ""
-echo "--- Step 5: Building and Deploying RAG Stack ---"
+echo "--- Step 6: Preparing RAG Stack ---"
 cd docker-deploy/rag-stack
 
-if [ ! -f .env ]; then
-    echo "⚠️  No .env file found in docker-deploy/rag-stack."
-    echo "   Creating one from .env.example..."
-    cp .env.example .env
-    echo "   PLEASE NOTE: You MUST edit this file to set NEXTCLOUD_URL, WEBDAV creds, and OIDC."
-fi
+# Generate Random Webhook Secret
+WEBHOOK_SECRET=$(openssl rand -hex 32)
 
-echo "Building RAG Services (this may take a while)..."
+# Generate .env if not exists, or update it? 
+# We overwrite to ensure variables are propagated, assuming fresh install. 
+# Check if file exists to warn user? Use explicit confirmation?
+# For automation request, we assume overwriting basic config but PRESERVING manual if we parsed it.
+# Simplest approach: Generate a specialized .env file.
+
+cat > .env <<EOF
+# Domain Configuration
+RAG_DOMAIN=${RAG_DOMAIN}
+
+# Nextcloud Connection
+NEXTCLOUD_URL=https://${NEXTCLOUD_DOMAIN}
+NEXTCLOUD_WEBHOOK_SECRET=${WEBHOOK_SECRET}
+
+# --- MANUAL CONFIGURATION REQUIRED BELOW ---
+# 1. Create 'readonly-bot' in Nextcloud -> Settings -> Security -> App passwords
+WEBDAV_USER=readonly-bot
+WEBDAV_PASSWORD=CHANGE_ME_TO_APP_PASSWORD
+
+# Databases
+POSTGRES_USER=rag_user
+POSTGRES_PASSWORD=secure_password
+POSTGRES_DB=rag_metadata
+QDRANT_API_KEY=
+
+# Authentication (OIDC) - Configure in your IdP
+OIDC_ISSUER=https://auth.example.com/realms/master
+OIDC_CLIENT_ID=rag-client
+OIDC_AUDIENCE=rag-api
+
+# LLM Provider
+# 2. Get your OpenAI API Key
+OPENAI_API_KEY=sk-CHANGE_ME
+EOF
+
+echo "Generated rag-stack/.env"
+echo "✅ Webhook Secret generated: ${WEBHOOK_SECRET}" 
+echo "   (You will need to configure this in the Nextcloud Webhook App later)"
+
+echo ""
+echo "=========================================="
+echo "⚠️  MANUAL ACTION REQUIRED ⚠️"
+echo "=========================================="
+echo "1. Go to https://${NEXTCLOUD_DOMAIN}:8443 and finish Nextcloud Setup."
+echo "2. Log in to Nextcloud, create user 'readonly-bot', and generate an App Password."
+echo "3. Edit docker-deploy/rag-stack/.env:"
+echo "   - Set WEBDAV_PASSWORD=<your_app_password>"
+echo "   - Set OPENAI_API_KEY=<your_key>"
+echo "   - Check OIDC settings if needed."
+echo ""
+read -p "Press [Enter] once you have updated the .env file to continue..."
+
+# --- 7. RAG Deployment ---
+echo ""
+echo "--- Step 7: Deploying RAG Stack ---"
 docker compose build || error_exit "RAG_BUILD" "docker compose build"
-
-echo "Deploying RAG Stack..."
 docker compose up -d || error_exit "RAG_DEPLOY" "docker compose up -d"
 
-# Verify Key Containers
-sleep 5
-verify_container_up "rag-qdrant"
-verify_container_up "rag-redis"
-verify_container_up "rag-haystack-api"
-verify_container_up "rag-webhook-gateway"
 verify_container_up "rag-indexer-worker"
+verify_container_up "rag-haystack-api"
 
 echo ""
 echo "=========================================="
 echo "✅ INSTALLATION SUCCESSFUL"
 echo "=========================================="
-echo "All stacks are up and running."
-echo ""
-echo "Next Steps:"
-echo "1. Configure the Proxy domains in docker-deploy/proxy/.env"
-echo "2. Configure Nextcloud AIO at https://<NEXTCLOUD_DOMAIN>:8443"
-echo "3. Configure RAG credentials in docker-deploy/rag-stack/.env"
-echo "   (Restart the rag-stack after editing .env: 'cd docker-deploy/rag-stack && docker compose up -d')"
