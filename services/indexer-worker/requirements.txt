@@ -1,0 +1,6 @@
+haystack-ai>=2.0.0
+qdrant-client>=1.7.0
+webdav4>=0.9.8
+redis>=5.0.1
+psycopg2-binary>=2.9.9
+python-magic>=0.4.27

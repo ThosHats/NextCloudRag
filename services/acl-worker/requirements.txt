@@ -1,0 +1,5 @@
+requests>=2.31.0
+qdrant-client>=1.7.0
+redis>=5.0.1
+psycopg2-binary>=2.9.9
+schedule>=1.2.1

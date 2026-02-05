@@ -1,0 +1,137 @@
+services:
+  # --- Infrastructure Services ---
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    networks:
+      - platform-net
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: rag-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    networks:
+      - platform-net
+
+  redis:
+    image: redis:alpine
+    container_name: rag-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - platform-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - platform-net
+    profiles:
+      - local-llm
+    # To enable: docker compose --profile local-llm up
+
+    # --- Application Services (Placeholders for build contexts) ---
+
+  webhook-gateway:
+    build:
+      context: ../../services/webhook-gateway
+    image: rag-webhook-gateway:latest
+    container_name: rag-webhook-gateway
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://rag-redis:6379/0
+      - NEXTCLOUD_WEBHOOK_SECRET=${NEXTCLOUD_WEBHOOK_SECRET}
+    networks:
+      - platform-net
+    labels:
+      - "caddy=${RAG_DOMAIN}"
+      - "caddy.handle_path=/webhook/nextcloud*"
+      - "caddy.handle_path.reverse_proxy={{upstreams 8080}}"
+
+  indexer-worker:
+    build:
+      context: ../../services/indexer-worker
+    image: rag-indexer-worker:latest
+    container_name: rag-indexer-worker
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+      - postgres
+      - redis
+    environment:
+      - REDIS_URL=redis://rag-redis:6379/0
+      - QDRANT_URL=http://rag-qdrant:6333
+      - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@rag-postgres:5432/${POSTGRES_DB}
+      - NEXTCLOUD_URL=${NEXTCLOUD_URL}
+      - WEBDAV_USER=${WEBDAV_USER}
+      - WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
+    networks:
+      - platform-net
+
+  acl-worker:
+    build:
+      context: ../../services/acl-worker
+    image: rag-acl-worker:latest
+    container_name: rag-acl-worker
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+      - postgres
+      - redis
+    environment:
+      - REDIS_URL=redis://rag-redis:6379/0
+      - QDRANT_URL=http://rag-qdrant:6333
+      - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@rag-postgres:5432/${POSTGRES_DB}
+    networks:
+      - platform-net
+
+  haystack-api:
+    build:
+      context: ../../services/haystack-api
+    image: rag-haystack-api:latest
+    container_name: rag-haystack-api
+    restart: unless-stopped
+    depends_on:
+      - qdrant
+      - postgres
+    environment:
+      - QDRANT_URL=http://rag-qdrant:6333
+      # LLM Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_URL=http://rag-ollama:11434
+      # OIDC Authentication
+      - OIDC_ISSUER=${OIDC_ISSUER}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
+      - OIDC_AUDIENCE=${OIDC_AUDIENCE:-}
+    networks:
+      - platform-net
+    labels:
+      - "caddy=${RAG_DOMAIN}"
+      - "caddy.reverse_proxy={{upstreams 8000}}"
+
+volumes:
+  qdrant_data:
+  postgres_data:
+  redis_data:
+  ollama_data:
+
+
+networks:
+  platform-net:
+    external: true

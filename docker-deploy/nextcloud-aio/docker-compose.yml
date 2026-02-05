@@ -1,0 +1,31 @@
+services:
+  nextcloud-aio-mastercontainer:
+    image: nextcloud/all-in-one:latest
+    init: true
+    restart: always
+    container_name: nextcloud-aio-mastercontainer
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      # Expose AIO Interface
+      - "8080:8080"
+    environment:
+      # Required for reverse proxy mode
+      - APACHE_PORT=11000
+      - APACHE_IP_BINDING=0.0.0.0
+      # Domain of the Nextcloud instance
+      - NEXTCLOUD_DATADIR=/mnt/ncdata
+    networks:
+      - platform-net
+    labels:
+      - "caddy=${NEXTCLOUD_DOMAIN}"
+      - "caddy.reverse_proxy={{upstreams 11000}}"
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer
+
+networks:
+  platform-net:
+    external: true
