@@ -33,7 +33,7 @@ When the script pauses at **Step 6**, you must edit `docker-deploy/rag-stack/.en
 *   **What is it?** A specific password for the bot user (`readonly-bot`) to access files via WebDAV without full login.
 *   **Why manual?** This cannot be automated securely. It must be generated inside your specific Nextcloud instance after it is installed.
 *   **How to get it:**
-    1.  Log in to your new Nextcloud as Admin.
+    1.  Go to `https://<YOUR_SERVER_IP>:8080` (AIO Setup Interface) and finish the setup. Then log in as Admin.
     2.  Create a user named `readonly-bot`.
     3.  Log in as `readonly-bot` (or use "Impersonate").
     4.  Go to **Settings** -> **Security**.
