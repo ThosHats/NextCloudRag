@@ -16,6 +16,8 @@ services:
       - caddy_data:/data
     labels:
       - "caddy.email=${ACME_EMAIL}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   caddy_data:

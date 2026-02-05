@@ -20,7 +20,7 @@ services:
       - platform-net
     labels:
       - "caddy=${NEXTCLOUD_DOMAIN}"
-      - "caddy.reverse_proxy={{upstreams 11000}}"
+      - "caddy.reverse_proxy=host.docker.internal:11000"
 
 volumes:
   nextcloud_aio_mastercontainer:
