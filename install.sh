@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Ensure we are running in Bash (because we use Process Substitution and read -p)
+if [ -z "$BASH_VERSION" ]; then
+    echo "⚠️  Detected execution via 'sh'. Re-launching with 'bash'..."
+    exec bash "$0" "$@"
+fi
+
 # ==========================================
 # NextCloud RAG Installation Script (Interactive)
 # ==========================================
@@ -68,14 +74,15 @@ fi
 # --- 2. Configuration Prompts ---
 echo ""
 echo "--- Step 2: Configuration ---"
-if [ -z "$NEXTCLOUD_DOMAIN" ]; then
-    read -p "Enter Nextcloud Domain (e.g., cloud.example.com): " INPUT_NC_DOMAIN
-    export NEXTCLOUD_DOMAIN=$INPUT_NC_DOMAIN
+if [ -z "$BASE_DOMAIN" ]; then
+    read -p "Enter Base Domain (e.g., example.com): " INPUT_BASE_DOMAIN
+    export BASE_DOMAIN=$INPUT_BASE_DOMAIN
 fi
-if [ -z "$RAG_DOMAIN" ]; then
-    read -p "Enter RAG Domain (e.g., rag.example.com): " INPUT_RAG_DOMAIN
-    export RAG_DOMAIN=$INPUT_RAG_DOMAIN
-fi
+
+# Derive Subdomains
+export NEXTCLOUD_DOMAIN="cloud.${BASE_DOMAIN}"
+export RAG_DOMAIN="rag.${BASE_DOMAIN}"
+
 if [ -z "$ACME_EMAIL" ]; then
     read -p "Enter Email for Let's Encrypt (e.g., admin@example.com): " INPUT_EMAIL
     export ACME_EMAIL=$INPUT_EMAIL
@@ -83,9 +90,10 @@ fi
 
 echo ""
 echo "Configuration:"
-echo "- Nextcloud: $NEXTCLOUD_DOMAIN"
-echo "- RAG App:   $RAG_DOMAIN"
-echo "- Email:     $ACME_EMAIL"
+echo "- Base Domain: $BASE_DOMAIN"
+echo "- Nextcloud:   $NEXTCLOUD_DOMAIN"
+echo "- RAG App:     $RAG_DOMAIN"
+echo "- Email:       $ACME_EMAIL"
 echo ""
 
 # --- 3. Network ---

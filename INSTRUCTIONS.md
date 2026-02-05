@@ -17,7 +17,8 @@ The installation is automated via `./install.sh`.
     ./install.sh
     ```
 2.  **Follow the prompts:**
-    - Enter your domains (e.g., `cloud.example.com`, `rag.example.com`).
+    - Enter your **Base Domain** (e.g., `example.com`).
+      - The system will create `cloud.example.com` (Nextcloud) and `rag.example.com` (RAG API).
     - Enter your email for SSL.
 
 The script will set up the network, proxy, and Nextcloud. It will then **pause** and ask you to enter sensitive credentials.
