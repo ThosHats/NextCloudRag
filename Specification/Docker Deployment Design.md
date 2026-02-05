@@ -112,6 +112,9 @@ services:
 
 ## 5. Domain / Routing Strategy
 
+> [!NOTE]
+> All domain names listed below (e.g., `example.com`) are placeholders. In the actual deployment, these will be configured using environment variables (e.g., `NEXTCLOUD_DOMAIN`, `RAG_DOMAIN`) in the `.env` files.
+
 ### 5.1 Recommended: Subdomains
 - `cloud.example.com` → Nextcloud
 - `rag.example.com` → Haystack API (chat/search)
