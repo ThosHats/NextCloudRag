@@ -74,6 +74,11 @@ fi
 # --- 2. Configuration Prompts ---
 echo ""
 echo "--- Step 2: Configuration ---"
+
+# Detect Public IP
+PUBLIC_IP=$(curl -s https://ifconfig.me || hostname -I | awk '{print $1}')
+echo "Detected Public IP: $PUBLIC_IP"
+
 if [ -z "$BASE_DOMAIN" ]; then
     read -p "Enter Base Domain (e.g., example.com): " INPUT_BASE_DOMAIN
     export BASE_DOMAIN=$INPUT_BASE_DOMAIN
@@ -178,7 +183,7 @@ echo ""
 echo "=========================================="
 echo "⚠️  MANUAL ACTION REQUIRED ⚠️"
 echo "=========================================="
-echo "1. Go to https://<YOUR_SERVER_IP>:8080 and finish Nextcloud Setup."
+echo "1. Go to https://${PUBLIC_IP}:8080 and finish Nextcloud Setup."
 echo "2. Log in to Nextcloud, create user 'readonly-bot', and generate an App Password."
 echo "3. Edit docker-deploy/rag-stack/.env:"
 echo "   - Set WEBDAV_PASSWORD=<your_app_password>"
