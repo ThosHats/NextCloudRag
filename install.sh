@@ -128,6 +128,12 @@ cd ../..
 echo ""
 echo "--- Step 5: Deploying Nextcloud AIO ---"
 cd docker-deploy/nextcloud-aio
+# Generate .env for AIO
+cat > .env <<EOF
+NEXTCLOUD_DOMAIN=${NEXTCLOUD_DOMAIN}
+EOF
+echo "Generated nextcloud-aio/.env"
+
 docker compose up -d || error_exit "NEXTCLOUD_DEPLOY" "docker compose up -d (nextcloud)" "nextcloud-aio-mastercontainer"
 verify_container_up "nextcloud-aio-mastercontainer"
 cd ../..

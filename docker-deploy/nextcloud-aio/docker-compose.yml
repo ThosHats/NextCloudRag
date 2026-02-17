@@ -21,6 +21,8 @@ services:
     labels:
       - "caddy=${NEXTCLOUD_DOMAIN}"
       - "caddy.reverse_proxy=host.docker.internal:11000"
+    extra_hosts:
+      - "${NEXTCLOUD_DOMAIN}:host-gateway"
 
 volumes:
   nextcloud_aio_mastercontainer:
