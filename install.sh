@@ -143,60 +143,104 @@ echo ""
 echo "--- Step 6: Preparing RAG Stack ---"
 cd docker-deploy/rag-stack
 
-# Generate Random Webhook Secret
-WEBHOOK_SECRET=$(openssl rand -hex 32)
+# A. PostgreSQL Configuration
+echo "Generating secure database passwords..."
+POSTGRES_PASSWORD=$(openssl rand -hex 20)
+echo "✅ Database passwords generated."
 
-# Generate .env if not exists, or update it? 
-# We overwrite to ensure variables are propagated, assuming fresh install. 
-# Check if file exists to warn user? Use explicit confirmation?
-# For automation request, we assume overwriting basic config but PRESERVING manual if we parsed it.
-# Simplest approach: Generate a specialized .env file.
+# B. Nextcloud Webhook Configuration
+echo ""
+echo "----------------------------------------------------------------"
+echo "SETUP: Nextcloud Webhook"
+echo "----------------------------------------------------------------"
+echo "1. Log in to your Nextcloud as admin."
+echo "2. Install the 'Webhooks' app if not already present."
+echo "3. Go to 'Administration Settings' -> 'Webhooks'."
+echo "4. Create a new webhook for 'File created/updated'."
+echo "5. You will see/set a 'Secret'. Enter it here."
+echo ""
+read -p "Enter Nextcloud Webhook Secret: " NEXTCLOUD_WEBHOOK_SECRET
 
+# C. Nextcloud WebDAV Configuration (The Bot)
+echo ""
+echo "----------------------------------------------------------------"
+echo "SETUP: WebDAV / Bot User"
+echo "----------------------------------------------------------------"
+echo "The RAG system needs to read files from Nextcloud via WebDAV."
+echo "1. Log in to Nextcloud."
+echo "2. Create a dedicated user (e.g., 'rag-bot') or use your own."
+echo "3. Go to 'Personal Settings' -> 'Security'."
+echo "4. Scroll down to 'Devices & sessions'."
+echo "5. Enter 'RAG-App' in the 'App name' field and click 'Create new app password'."
+echo "6. IMPORTANT: Copy the password shown!"
+echo ""
+read -p "Enter the Nextcloud App Password for the bot: " WEBDAV_PASSWORD
+
+# D. OpenAI Configuration
+echo ""
+echo "----------------------------------------------------------------"
+echo "SETUP: AI Model (OpenAI)"
+echo "----------------------------------------------------------------"
+echo "The system uses OpenAI for processing text and answering questions."
+echo "1. Go to https://platform.openai.com/"
+echo "2. Login and navigate to 'API Keys'."
+echo "3. Create a new secret key."
+echo ""
+read -p "Enter your OpenAI API Key (sk-...): " OPENAI_API_KEY
+
+# E. OIDC Authentication
+echo ""
+echo "----------------------------------------------------------------"
+echo "SETUP: Authentication (OIDC)"
+echo "----------------------------------------------------------------"
+echo "Do you want to use OpenID Connect (OIDC) for user authentication?"
+echo "This is required if you want to restrict the web UI to specific users."
+read -p "Use OIDC? (y/n): " USE_OIDC
+
+OIDC_ISSUER="none"
+OIDC_CLIENT_ID="none"
+OIDC_AUDIENCE="none"
+
+if [[ $USE_OIDC == "y"* ]]; then
+    echo ""
+    echo "Please provide your OIDC details (from Keycloak, Authentik, etc.):"
+    read -p "OIDC Issuer URL: " OIDC_ISSUER
+    read -p "OIDC Client ID: " OIDC_CLIENT_ID
+    read -p "OIDC Audience: " OIDC_AUDIENCE
+fi
+
+# Generate the .env file
 cat > .env <<EOF
 # Domain Configuration
 RAG_DOMAIN=${RAG_DOMAIN}
 
 # Nextcloud Connection
 NEXTCLOUD_URL=https://${NEXTCLOUD_DOMAIN}
-NEXTCLOUD_WEBHOOK_SECRET=${WEBHOOK_SECRET}
+NEXTCLOUD_WEBHOOK_SECRET=${NEXTCLOUD_WEBHOOK_SECRET}
 
-# --- MANUAL CONFIGURATION REQUIRED BELOW ---
-# 1. Create 'readonly-bot' in Nextcloud -> Settings -> Security -> App passwords
-WEBDAV_USER=readonly-bot
-WEBDAV_PASSWORD=CHANGE_ME_TO_APP_PASSWORD
+# WebDAV Bot Configuration
+WEBDAV_USER=rag-bot
+WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
 
 # Databases
 POSTGRES_USER=rag_user
-POSTGRES_PASSWORD=secure_password
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 POSTGRES_DB=rag_metadata
-QDRANT_API_KEY=
 
-# Authentication (OIDC) - Configure in your IdP
-OIDC_ISSUER=https://auth.example.com/realms/master
-OIDC_CLIENT_ID=rag-client
-OIDC_AUDIENCE=rag-api
+# Authentication (OIDC)
+OIDC_ISSUER=${OIDC_ISSUER}
+OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
+OIDC_AUDIENCE=${OIDC_AUDIENCE}
 
 # LLM Provider
-# 2. Get your OpenAI API Key
-OPENAI_API_KEY=sk-CHANGE_ME
+OPENAI_API_KEY=${OPENAI_API_KEY}
 EOF
 
-echo "Generated rag-stack/.env"
-echo "✅ Webhook Secret generated: ${WEBHOOK_SECRET}" 
-echo "   (You will need to configure this in the Nextcloud Webhook App later)"
-
 echo ""
-echo "=========================================="
-echo "⚠️  MANUAL ACTION REQUIRED ⚠️"
-echo "=========================================="
-echo "1. Go to https://${PUBLIC_IP}:8080 and finish Nextcloud Setup."
-echo "2. Log in to Nextcloud, create user 'readonly-bot', and generate an App Password."
-echo "3. Edit docker-deploy/rag-stack/.env:"
-echo "   - Set WEBDAV_PASSWORD=<your_app_password>"
-echo "   - Set OPENAI_API_KEY=<your_key>"
-echo "   - Check OIDC settings if needed."
+echo "✅ Generated rag-stack/.env with your provided configuration."
+echo "----------------------------------------------------------------"
 echo ""
-read -p "Press [Enter] once you have updated the .env file to continue..."
+read -p "Press [Enter] to start the deployment of the RAG stack..."
 
 # --- 7. RAG Deployment ---
 echo ""
