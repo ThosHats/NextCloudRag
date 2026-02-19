@@ -301,7 +301,7 @@ def register_webhook(endpoint, event, user, password, base_url):
         "uri": endpoint,
         "event": event,
         "httpMethod": "POST",
-        "authMethod": "noAuth"
+        "authMethod": "header"
     }
     
     data = json.dumps(payload).encode('utf-8')
