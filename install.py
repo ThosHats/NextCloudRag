@@ -15,7 +15,10 @@ from getpass import getpass
 # NextCloud RAG Installation Script (Python)
 # ==========================================
 
-LOG_FILE = "install_debug.log"
+# Determine the directory where this script is located
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(ROOT_DIR, "install_debug.log")
+CONFIG_FILE = os.path.join(ROOT_DIR, "config.yaml")
 
 def log(message):
     print(message)
@@ -132,13 +135,13 @@ def get_group_folder_id(folder_name):
     return None
 
 def process_group_creation():
-    if not os.path.exists("config.yaml"): 
-        log("ℹ️ No config.yaml, skipping group creation.")
+    if not os.path.exists(CONFIG_FILE): 
+        log(f"ℹ️ {CONFIG_FILE} not found, skipping group creation.")
         return
     
     install_pyyaml()
     import yaml
-    with open("config.yaml") as f:
+    with open(CONFIG_FILE) as f:
         config = yaml.safe_load(f)
     
     log("🔄 Processing groups from config.yaml...")
@@ -165,10 +168,10 @@ def process_group_creation():
             run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} admin write share delete", check=False)
 
 def assign_bot_to_folders(bot_user):
-    if not os.path.exists("config.yaml"): return
+    if not os.path.exists(CONFIG_FILE): return
     
     import yaml
-    with open("config.yaml") as f:
+    with open(CONFIG_FILE) as f:
          config = yaml.safe_load(f)
     
     log(f"🔄 granting '{bot_user}' read access to group folders...")     
@@ -186,12 +189,12 @@ with open(LOG_FILE, "a") as f:
 
 # Load Configuration from config.yaml
 GLOBAL_CONFIG = {}
-if os.path.exists("config.yaml"):
+if os.path.exists(CONFIG_FILE):
     install_pyyaml()
     import yaml
-    with open("config.yaml") as f:
+    with open(CONFIG_FILE) as f:
         GLOBAL_CONFIG = yaml.safe_load(f)
-    log("✅ Loaded configuration from config.yaml")
+    log(f"✅ Loaded configuration from {CONFIG_FILE}")
 
 log("--- Step 1: Checking and Installing Prerequisites ---")
 
