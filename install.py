@@ -123,15 +123,34 @@ def install_pyyaml():
 
 def get_group_folder_id(folder_name):
     try:
+        # Use --output=json to get machine-readable data
         res = run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:list --output=json", check=False, capture_output=True)
         if res.returncode == 0:
             import json
-            data = json.loads(res.stdout)
-            for fid, info in data.items():
-                if info['mount_point'] == folder_name:
-                    return fid
-    except:
-        pass
+            # Skip any non-json lines (occ sometimes outputs warnings before json)
+            output = res.stdout.strip()
+            if not output: return None
+            
+            # Find the start of the JSON block if there are warnings
+            if output.find('{') != -1 or output.find('[') != -1:
+                start = min([i for i in [output.find('{'), output.find('[')] if i != -1])
+                output = output[start:]
+            
+            data = json.loads(output)
+            
+            # Handle if data is a list (newer versions) or dict (older versions)
+            if isinstance(data, dict):
+                for fid, info in data.items():
+                    if info.get('mount_point') == folder_name or info.get('name') == folder_name:
+                        return fid
+            elif isinstance(data, list):
+                for folder in data:
+                    if folder.get('mount_point') == folder_name or folder.get('folder_id'):
+                        # In list format, folder_id might be a key
+                        if folder.get('mount_point') == folder_name:
+                            return folder.get('id') or folder.get('folder_id')
+    except Exception as e:
+        log(f"      DEBUG: Error parsing groupfolders: {e}")
     return None
 
 def process_group_creation():
@@ -144,28 +163,42 @@ def process_group_creation():
     with open(CONFIG_FILE) as f:
         config = yaml.safe_load(f)
     
-    log("🔄 Processing groups from config.yaml...")
+    log("🔄 Processing groups and folders from config.yaml...")
     for g in config.get('groups', []):
         name = g['name']
         folder = g['folder_name']
         
-        # Create Group
-        run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ group:add {name}", check=False)
+        # 1. Create/Check Group
+        log(f"   -> Group '{name}':")
+        res = run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ group:info {name}", check=False, capture_output=True)
+        if res.returncode != 0:
+            log(f"      Creating group...")
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ group:add {name}", check=False)
+        else:
+            log(f"      Group already exists.")
         
-        # Create Folder
+        # 2. Find/Create Folder
         fid = get_group_folder_id(folder)
         if not fid:
-            log(f"   -> Creating group folder: {folder}")
+            log(f"      Creating group folder '{folder}'...")
             run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:create \"{folder}\"", check=False)
             fid = get_group_folder_id(folder)
         
         if fid:
+            log(f"      Folder ID: {fid}")
             # Assign Group
-            log(f"   -> Assigning group '{name}' to '{folder}' (Write/Share/Delete)")
+            log(f"      Assigning group '{name}' with Write/Share/Delete permissions...")
             run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {name} --write --share --delete", check=False)
             
-            # Assign Admin (so we can see it and manage it)
+            # Assign Admin
             run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} admin --write --share --delete", check=False)
+        else:
+            log(f"      ❌ ERROR: Could not determine Folder ID for '{folder}'")
+
+    # Final Verification
+    log("")
+    log("Verification of Group Folders:")
+    run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:list", check=False)
 
 def assign_bot_to_folders(bot_user):
     if not os.path.exists(CONFIG_FILE): return
