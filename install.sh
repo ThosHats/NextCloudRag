@@ -62,13 +62,63 @@ function verify_container_up {
     echo "✅ Container '$container_name' is UP."
 }
 
-# --- 1. Prerequisites ---
-echo "--- Step 1: Checking Prerequisites ---"
-check_command docker
-check_command openssl
+# --- 1. Prerequisites & Installation ---
+echo "--- Step 1: Checking and Installing Prerequisites ---"
 
-if ! docker info > /dev/null 2>&1; then
-    error_exit "PREREQUISITES" "Docker daemon is not running or accessible"
+# Function to install a package if it's missing
+function ensure_package {
+    if ! command -v "$1" &> /dev/null; then
+        echo "📦 Package '$1' is missing. Installing..."
+        SUDO_CMD=""
+        if command -v sudo &> /dev/null; then SUDO_CMD="sudo"; fi
+        $SUDO_CMD apt-get update -y
+        $SUDO_CMD apt-get install -y "$2"
+    else
+        echo "✅ '$1' is already installed."
+    fi
+}
+
+# 1a. Core Tools
+ensure_package curl curl
+ensure_package openssl openssl
+ensure_package git git
+
+# 1b. Docker Installation
+if ! command -v docker &> /dev/null; then
+    echo "🐳 Docker not found. Installing Docker..."
+    SUDO_CMD=""
+    if command -v sudo &> /dev/null; then SUDO_CMD="sudo"; fi
+    $SUDO_CMD apt-get update -y
+    $SUDO_CMD apt-get install -y ca-certificates gnupg lsb-release
+    $SUDO_CMD mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | $SUDO_CMD gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+      $(lsb_release -cs) stable" | $SUDO_CMD tee /etc/apt/sources.list.d/docker.list > /dev/null
+    $SUDO_CMD apt-get update -y
+    $SUDO_CMD apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+else
+    echo "✅ Docker is already installed."
+fi
+
+# Ensure Docker is running
+SUDO_CMD=""
+if command -v sudo &> /dev/null; then SUDO_CMD="sudo"; fi
+
+if ! $SUDO_CMD docker info > /dev/null 2>&1; then
+    echo "🚀 Starting Docker service..."
+    $SUDO_CMD systemctl start docker
+    $SUDO_CMD systemctl enable docker
+fi
+
+# Verify Docker access
+if ! $SUDO_CMD docker info > /dev/null 2>&1; then
+    error_exit "PREREQUISITES" "Docker daemon is not running or accessible even after installation attempt."
+fi
+
+# Alias docker-compose if needed
+if ! docker compose version &> /dev/null; then
+    error_exit "PREREQUISITES" "Docker Compose (V2) is required but not found."
 fi
 
 # --- 2. Configuration Prompts ---
