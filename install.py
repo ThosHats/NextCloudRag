@@ -162,10 +162,10 @@ def process_group_creation():
         if fid:
             # Assign Group
             log(f"   -> Assigning group '{name}' to '{folder}' (Write/Share/Delete)")
-            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {name} write share delete", check=False)
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {name} --write --share --delete", check=False)
             
-            # Assign Admin (so we can see it)
-            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} admin write share delete", check=False)
+            # Assign Admin (so we can see it and manage it)
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} admin --write --share --delete", check=False)
 
 def assign_bot_to_folders(bot_user):
     if not os.path.exists(CONFIG_FILE): return
@@ -179,7 +179,8 @@ def assign_bot_to_folders(bot_user):
         folder = g['folder_name']
         fid = get_group_folder_id(folder)
         if fid:
-            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {bot_user} read", check=False)
+            # For the bot, we only give read access (no flags needed, as read is default)
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {bot_user}", check=False)
 
 # --- Main Execution ---
 
