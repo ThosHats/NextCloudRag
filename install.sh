@@ -136,6 +136,27 @@ echo "Generated nextcloud-aio/.env"
 
 docker compose up -d || error_exit "NEXTCLOUD_DEPLOY" "docker compose up -d (nextcloud)" "nextcloud-aio-mastercontainer"
 verify_container_up "nextcloud-aio-mastercontainer"
+
+echo ""
+echo "----------------------------------------------------------------"
+echo "ATTENTION: Nextcloud AIO Setup Needed"
+echo "----------------------------------------------------------------"
+echo "Open the following URL in your browser to complete the Nextcloud setup:"
+echo "http://${PUBLIC_IP}:8080"
+echo ""
+echo "Important:"
+echo "1. Follow the instructions on the page."
+echo "2. Use the Domain: ${NEXTCLOUD_DOMAIN}"
+echo "3. After finishing the setup and starting the containers,"
+echo "   Nextcloud will be available at: https://${NEXTCLOUD_DOMAIN}"
+echo "----------------------------------------------------------------"
+echo ""
+read -p "Press [Enter] once you have finished the Nextcloud AIO setup..."
+
+# Automatically enable the Webhook Listeners app
+echo "Activating Webhook Listeners app in Nextcloud..."
+docker exec -u www-data nextcloud-aio-nextcloud php occ app:enable webhook_listeners || echo "⚠️ Warning: Could not enable app automatically. Please enable 'Webhook Listeners' manually in the Nextcloud App Store."
+
 cd ../..
 
 # --- 6. RAG Stack Config Generation ---
@@ -151,15 +172,19 @@ echo "✅ Database passwords generated."
 # B. Nextcloud Webhook Configuration
 echo ""
 echo "----------------------------------------------------------------"
-echo "SETUP: Nextcloud Webhook"
+echo "SETUP: Nextcloud Webhook (Webhook Listeners)"
 echo "----------------------------------------------------------------"
 echo "1. Log in to your Nextcloud as admin at https://${NEXTCLOUD_DOMAIN}"
-echo "2. Install the 'Webhooks' app if not already present."
-echo "3. Go to 'Administration Settings' -> 'Webhooks'."
-echo "4. Create a new webhook for 'File created/updated'."
-echo "5. You will see/set a 'Secret'. Enter it here."
+echo "2. Go to 'Administration Settings' -> 'Webhook Listeners' (usually found under 'Tools')."
+echo "3. Click on 'Add' to create a new webhook."
+echo "4. Set the Following Values:"
+echo "   - URL:    https://${RAG_DOMAIN}/webhook/nextcloud"
+echo "   - Events: Select 'NodeCreatedEvent' and 'NodeWrittenEvent'"
+echo "   - Secret: Enter a secure secret (and remember it for the next step!)"
+echo "5. Click 'Save'."
+echo "----------------------------------------------------------------"
 echo ""
-read -p "Enter Nextcloud Webhook Secret: " NEXTCLOUD_WEBHOOK_SECRET
+read -p "Enter the Nextcloud Webhook Secret you just set: " NEXTCLOUD_WEBHOOK_SECRET
 
 # C. Nextcloud WebDAV Configuration (The Bot)
 echo ""

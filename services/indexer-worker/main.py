@@ -21,20 +21,46 @@ WEBDAV_PASSWORD = os.getenv("WEBDAV_PASSWORD")
 
 def process_job(job: dict, pipeline: IndexingPipeline, nc_client: NextcloudClient, db: MetadataDB):
     payload = job.get("payload", {})
-    event = payload.get("event")
-    file_id = payload.get("file_id")
-    file_path = payload.get("path", "") # Need to ensure we get the full path
+    
+    # Handle both old "Webhooks" app and new official "Webhook Listeners" app
+    if "event" in payload and isinstance(payload["event"], dict):
+        # Official Webhook Listeners Format
+        event_obj = payload["event"]
+        event_class = event_obj.get("class", "")
+        
+        # Map class names to simplified events
+        if "NodeCreatedEvent" in event_class:
+            event = "file.created"
+        elif "NodeWrittenEvent" in event_class:
+            event = "file.updated"
+        elif "NodeDeletedEvent" in event_class:
+            event = "file.deleted"
+        else:
+            event = "unknown"
+            
+        node = event_obj.get("node", {})
+        file_id = node.get("id")
+        # Webhook Listeners paths are often 'files/username/path/to/file'
+        # We need the path relative to the user's root for WebDAV
+        raw_path = node.get("path", "")
+        path_parts = raw_path.split("/", 2) 
+        file_path = path_parts[2] if len(path_parts) > 2 else raw_path
+        etag = node.get("etag") # Might not be present in all events
+    else:
+        # Legacy/Simple Webhooks App Format
+        event = payload.get("event")
+        file_id = payload.get("file_id")
+        file_path = payload.get("path", "")
+        etag = payload.get("etag")
     
     logger.info(f"Processing event {event} for file {file_path} (ID: {file_id})")
 
     if event in ["file.created", "file.updated"]:
         # 1. Download file
-        # Note: Nextcloud paths in webhooks might need adjustment (e.g. removing user prefix)
-        # For now, we assume path is usable.
         try:
             content_io = nc_client.download_file(file_path)
             
-            # 2. Save to temp file for Haystack (most converters need a path)
+            # 2. Save to temp file for Haystack
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
                 tmp.write(content_io.read())
                 tmp_path = tmp.name
@@ -43,12 +69,12 @@ def process_job(job: dict, pipeline: IndexingPipeline, nc_client: NextcloudClien
             meta = {
                 "file_id": str(file_id),
                 "path": file_path,
-                "etag": payload.get("etag")
+                "etag": etag
             }
             pipeline.run(tmp_path, meta)
             
             # 4. Update DB
-            db.upsert_file(str(file_id), file_path, payload.get("etag"))
+            db.upsert_file(str(file_id), file_path, etag)
             
             # Cleanup
             os.remove(tmp_path)
@@ -59,7 +85,6 @@ def process_job(job: dict, pipeline: IndexingPipeline, nc_client: NextcloudClien
             raise
 
     elif event == "file.deleted":
-        # TODO: Implement deletion logic in Pipeline/DB
         logger.info(f"File deletion not yet fully implemented for {file_id}")
         pass
 
