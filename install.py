@@ -544,7 +544,14 @@ else:
     log("ℹ️ User 'rag-bot' already exists.")
     webdav_password = input("   Enter the existing password for 'rag-bot': ").strip()
 
-# Grant Access to Group Folders
+# --- NEW: Ensure rag-bot is in a group (required for Group Folders access) ---
+log("   -> Ensuring 'rag-bot' group membership...")
+# Create group 'rag-bot'
+run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ group:add rag-bot", check=False)
+# Add user 'rag-bot' to group 'rag-bot'
+run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ group:adduser rag-bot rag-bot", check=False)
+
+# Grant Access to Group Folders (this uses the 'rag-bot' GROUP)
 assign_bot_to_folders("rag-bot")
 
 if not webdav_password:
