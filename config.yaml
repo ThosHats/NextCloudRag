@@ -1,0 +1,9 @@
+domain: "qvibe.eu"
+email: "thomas@hartkens.de"
+groups:
+  - name: "TERES"
+    folder_name: "Wissen-TERES"
+  - name: "Siegkreis"
+    folder_name: "Wissen-Siegkreis"
+  - name: "KoellnMitte"
+    folder_name: "Wissen-KoellnMitte"
