@@ -299,14 +299,15 @@ def register_webhook(endpoint, event, user, password, base_url):
     
     payload = {
         "uri": endpoint,
-        "event": event
+        "event": event,
+        "httpMethod": "POST",
+        "authMethod": "noAuth"
     }
     
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(url, data=data, method='POST')
     req.add_header('OCS-APIRequest', 'true')
     req.add_header('Content-Type', 'application/json')
-    req.add_header('Accept', 'application/json, */*')
     
     auth_str = f"{user}:{password}"
     encoded_auth = base64.b64encode(auth_str.encode()).decode()
