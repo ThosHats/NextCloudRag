@@ -223,20 +223,78 @@ echo "✅ Database passwords generated."
 
 # B. Nextcloud Webhook Configuration
 echo ""
-echo "----------------------------------------------------------------"
-echo "SETUP: Nextcloud Webhook (Webhook Listeners)"
-echo "----------------------------------------------------------------"
-echo "1. Log in to your Nextcloud as admin at https://${NEXTCLOUD_DOMAIN}"
-echo "2. Go to 'Administration Settings' -> 'Webhook Listeners' (usually found under 'Tools')."
-echo "3. Click on 'Add' to create a new webhook."
-echo "4. Set the Following Values:"
-echo "   - URL:    https://${RAG_DOMAIN}/webhook/nextcloud"
-echo "   - Events: Select 'NodeCreatedEvent' and 'NodeWrittenEvent'"
-echo "   - Secret: Enter a secure secret (and remember it for the next step!)"
-echo "5. Click 'Save'."
-echo "----------------------------------------------------------------"
+# B. Nextcloud Webhook Configuration (Step 6)
 echo ""
-read -p "Enter the Nextcloud Webhook Secret you just set: " NEXTCLOUD_WEBHOOK_SECRET
+echo "----------------------------------------------------------------"
+echo "SETUP: Nextcloud Webhook Automation"
+echo "----------------------------------------------------------------"
+echo "We will now automatically register the necessary webhooks via the Nextcloud API."
+echo "Please provide your Nextcloud Admin credentials to authorize this action."
+echo ""
+
+# Function to register a webhook
+register_webhook() {
+    local endpoint="$1"
+    local event="$2"
+    local admin_user="$3"
+    local admin_pass="$4"
+
+    echo "   -> Registering event: $event..."
+    
+    # Use curl to send the request
+    HTTP_RESPONSE=$(curl -s -o response.json -w "%{http_code}" -X POST "${NEXTCLOUD_URL}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks" \
+        -u "${admin_user}:${admin_pass}" \
+        -H "OCS-APIRequest: true" \
+        -H "Content-Type: application/json" \
+        -d "{\"uri\": \"${endpoint}\", \"event\": \"${event}\"}")
+
+    if [ "$HTTP_RESPONSE" -eq 200 ] || [ "$HTTP_RESPONSE" -eq 201 ]; then
+        echo "      ✅ Success."
+    else
+        echo "      ❌ Failed (HTTP $HTTP_RESPONSE). Response:"
+        cat response.json
+        echo ""
+    fi
+    rm -f response.json
+}
+
+# Prompt for credentials
+read -p "Enter Nextcloud Admin Username (default: admin): " NC_ADMIN_USER
+NC_ADMIN_USER=${NC_ADMIN_USER:-admin}
+read -s -p "Enter Nextcloud Admin Password: " NC_ADMIN_PASS
+echo ""
+echo ""
+
+# Define the RAG Webhook URL
+RAG_WEBHOOK_URL="https://${RAG_DOMAIN}/webhook/nextcloud"
+echo "Target Webhook URL: $RAG_WEBHOOK_URL"
+echo ""
+
+# Register the events
+register_webhook "$RAG_WEBHOOK_URL" "OCP\\Files\\Events\\Node\\NodeCreatedEvent" "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
+register_webhook "$RAG_WEBHOOK_URL" "OCP\\Files\\Events\\Node\\NodeWrittenEvent" "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
+register_webhook "$RAG_WEBHOOK_URL" "OCP\\Files\\Events\\Node\\NodeDeletedEvent" "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
+
+# Verify Webhooks
+echo ""
+echo "Verifying registered webhooks..."
+VERIFY_RESPONSE=$(curl -s -X GET "${NEXTCLOUD_URL}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks" \
+    -u "${NC_ADMIN_USER}:${NC_ADMIN_PASS}" \
+    -H "OCS-APIRequest: true" \
+    -H "Content-Type: application/json")
+
+if echo "$VERIFY_RESPONSE" | grep -q "$RAG_WEBHOOK_URL"; then
+    echo "✅ Verification Successful: Webhooks are active."
+else
+    echo "⚠️  Verification Failed: Could not find the registered URL in the list."
+    echo "Debug Response: $VERIFY_RESPONSE"
+fi
+
+# Note on Secrets: The 'webhook_listeners' app does not use a shared secret in the payload.
+# We generate a random secret for the RAG app config, but it might not be verified by this specific app.
+NEXTCLOUD_WEBHOOK_SECRET=$(openssl rand -hex 20)
+echo ""
+echo "generated internal webhook secret: $NEXTCLOUD_WEBHOOK_SECRET"
 
 # C. Nextcloud WebDAV Configuration (The Bot)
 echo ""
