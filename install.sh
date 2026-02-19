@@ -245,6 +245,14 @@ register_webhook() {
     if [ -z "$NEXTCLOUD_URL" ]; then
         NEXTCLOUD_URL="https://${NEXTCLOUD_DOMAIN}"
     fi
+
+    # Create detailed JSON payload in a file to handle escaping correctly
+    cat > webhook_payload.json <<EOF
+{
+  "uri": "${endpoint}",
+  "event": "${event}"
+}
+EOF
     
     # Use curl to send the request
     # separate capture of http code and exit status to prevent script crash
@@ -252,7 +260,7 @@ register_webhook() {
         -u "${admin_user}:${admin_pass}" \
         -H "OCS-APIRequest: true" \
         -H "Content-Type: application/json" \
-        -d "{\"uri\": \"${endpoint}\", \"event\": \"${event}\"}" > http_code.txt; then
+        -d @webhook_payload.json > http_code.txt; then
         
         HTTP_RESPONSE=$(cat http_code.txt)
         
@@ -262,6 +270,9 @@ register_webhook() {
             echo "      ❌ Failed (HTTP $HTTP_RESPONSE). API/Server Response:"
             cat response.json
             echo ""
+            echo "      Debug: Sent Payload:"
+            cat webhook_payload.json
+            echo ""
         fi
     else
         echo "      ❌ CRITICAL ERROR: Curl command failed to execute."
@@ -269,7 +280,7 @@ register_webhook() {
         echo "      Please check if the URL is reachable from this server."
         echo "      The script will continue, but you may need to add webhooks manually."
     fi
-    rm -f response.json http_code.txt
+    rm -f response.json http_code.txt webhook_payload.json
 }
 
 # Prompt for credentials
@@ -285,9 +296,10 @@ echo "Target Webhook URL: $RAG_WEBHOOK_URL"
 echo ""
 
 # Register the events
-register_webhook "$RAG_WEBHOOK_URL" "OCP\\Files\\Events\\Node\\NodeCreatedEvent" "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
-register_webhook "$RAG_WEBHOOK_URL" "OCP\\Files\\Events\\Node\\NodeWrittenEvent" "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
-register_webhook "$RAG_WEBHOOK_URL" "OCP\\Files\\Events\\Node\\NodeDeletedEvent" "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
+# NOTE: We use single quotes here to preserve the double backslashes for JSON escaping
+register_webhook "$RAG_WEBHOOK_URL" 'OCP\\Files\\Events\\Node\\NodeCreatedEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
+register_webhook "$RAG_WEBHOOK_URL" 'OCP\\Files\\Events\\Node\\NodeWrittenEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
+register_webhook "$RAG_WEBHOOK_URL" 'OCP\\Files\\Events\\Node\\NodeDeletedEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
 
 # Verify Webhooks
 echo ""
