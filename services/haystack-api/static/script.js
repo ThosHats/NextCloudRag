@@ -97,12 +97,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Constructing a "Files" app link:
                 const pathParts = source.nc_path.split('/');
-                const filename = pathParts.pop(); # remove filename
+                const filename = pathParts.pop(); // remove filename
                 const dir = pathParts.join('/');
 
                 // Simplification: just show path for now if no ID available
-                const link = `${ncBase}/apps/files/?dir=${encodeURIComponent(dir)}&openfile=${encodeURIComponent(filename)}`; # This is a guess, might need file ID for robust linking
-                
+                const link = `${ncBase}/apps/files/?dir=${encodeURIComponent(dir)}&openfile=${encodeURIComponent(filename)}`; // This is a guess, might need file ID for robust linking
+
                 contentHtml += `
                     <a href="${link}" target="_blank" class="source-chip" title="Score: ${source.score.toFixed(2)}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
