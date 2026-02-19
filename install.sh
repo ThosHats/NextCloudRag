@@ -5,6 +5,12 @@
 # This script prepares a fresh server by installing Python 3 and its dependencies,
 # then hands over the installation process to install.py.
 
+# Ensure we are running in Bash (because we use Process Substitution)
+if [ -z "$BASH_VERSION" ]; then
+    echo "⚠️  Detected execution via 'sh'. Re-launching with 'bash'..."
+    exec bash "$0" "$@"
+fi
+
 set -e
 
 # Logging setup
