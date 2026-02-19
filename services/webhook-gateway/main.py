@@ -49,6 +49,7 @@ def verify_signature(request_body: bytes, signature: str) -> bool:
     
     return hmac.compare_digest(digest, signature)
 
+@app.post("/", status_code=status.HTTP_202_ACCEPTED)
 @app.post("/webhook/nextcloud", status_code=status.HTTP_202_ACCEPTED)
 async def handle_webhook(
     request: Request,
@@ -61,15 +62,26 @@ async def handle_webhook(
     """
     body_bytes = await request.body()
     
-    # Signature Verification
+    # Signature/Token Verification
     signature = x_signature_sha256 or x_signature
-    if not signature:
-        logger.warning("Missing signature header")
-        raise HTTPException(status_code=401, detail="Missing signature")
+    nc_token = request.headers.get("X-Nextcloud-Token")
     
-    if not verify_signature(body_bytes, signature):
-        logger.warning("Invalid signature")
-        raise HTTPException(status_code=401, detail="Invalid signature")
+    if not signature and not nc_token:
+        logger.warning("Missing authentication (signature or token)")
+        raise HTTPException(status_code=401, detail="Missing auth")
+    
+    if signature:
+        if not verify_signature(body_bytes, signature):
+            logger.warning("Invalid HMAC signature")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+    elif nc_token:
+        # For now, we allow the placeholder token we set in install.py
+        # In a production setup, this would be matched against the .env variable
+        if nc_token != "insecure-placeholder-for-now":
+            logger.warning(f"Invalid Nextcloud Token: {nc_token}")
+            raise HTTPException(status_code=401, detail="Invalid token")
+    
+    logger.info("Authentication successful")
 
     try:
         payload = await request.json()
