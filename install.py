@@ -249,6 +249,13 @@ try:
 except:
     log("⚠️ Warning: Could not enable app automatically. Please enable 'Webhook Listeners' manually in the Nextcloud App Store.")
 
+# Enable allow_local_remote_servers to ensure webhooks to local/public domains work
+log("Configuring Nextcloud to allow local remote servers (required for Webhooks)...")
+try:
+    run_command("docker exec -u www-data nextcloud-aio-nextcloud php occ config:system:set allow_local_remote_servers --value=true --type=bool")
+except:
+    log("⚠️ Warning: Could not set allow_local_remote_servers. Webhook registration might fail if the domain resolves locally.")
+
 os.chdir("../..")
 
 
@@ -299,6 +306,7 @@ def register_webhook(endpoint, event, user, password, base_url):
     req = urllib.request.Request(url, data=data, method='POST')
     req.add_header('OCS-APIRequest', 'true')
     req.add_header('Content-Type', 'application/json')
+    req.add_header('Accept', 'application/json, */*')
     
     auth_str = f"{user}:{password}"
     encoded_auth = base64.b64encode(auth_str.encode()).decode()
@@ -315,7 +323,10 @@ def register_webhook(endpoint, event, user, password, base_url):
             else:
                  print(f"      ❌ Failed with status: {response.status}")
     except urllib.error.HTTPError as e:
-        print(f"      ❌ Failed (HTTP {e.code}). Response: {e.read().decode('utf-8')}")
+        error_content = e.read().decode('utf-8')
+        print(f"      ❌ Failed (HTTP {e.code}).")
+        print(f"      Payload Sent: {json.dumps(payload)}")
+        print(f"      Response: {error_content if error_content else '[Empty Response]'}")
     except Exception as e:
         print(f"      ❌ Critical Error: {str(e)}")
 
