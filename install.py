@@ -138,17 +138,21 @@ def get_group_folder_id(folder_name):
             
             data = json.loads(output)
             
-            # Handle if data is a list (newer versions) or dict (older versions)
-            if isinstance(data, dict):
-                for fid, info in data.items():
-                    if info.get('mount_point') == folder_name or info.get('name') == folder_name:
-                        return fid
-            elif isinstance(data, list):
+            # Handle list format (observed on server)
+            if isinstance(data, list):
                 for folder in data:
-                    if folder.get('mount_point') == folder_name or folder.get('folder_id'):
-                        # In list format, folder_id might be a key
-                        if folder.get('mount_point') == folder_name:
-                            return folder.get('id') or folder.get('folder_id')
+                    # The server uses 'mountPoint' (camelCase) and 'id'
+                    if folder.get('mountPoint') == folder_name:
+                        return folder.get('id')
+                    # Fallbacks
+                    if folder.get('mount_point') == folder_name:
+                        return folder.get('id') or folder.get('folder_id')
+            
+            # Handle dict format (fallback for other versions)
+            elif isinstance(data, dict):
+                for fid, info in data.items():
+                    if info.get('mountPoint') == folder_name or info.get('mount_point') == folder_name or info.get('name') == folder_name:
+                        return fid
     except Exception as e:
         log(f"      DEBUG: Error parsing groupfolders: {e}")
     return None
