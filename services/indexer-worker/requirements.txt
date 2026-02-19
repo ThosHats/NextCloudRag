@@ -4,3 +4,6 @@ webdav4>=0.9.8
 redis>=5.0.1
 psycopg2-binary>=2.9.9
 python-magic>=0.4.27
+qdrant-haystack>=4.1.1
+pypdf>=4.0.1
+sentence-transformers>=2.3.1
