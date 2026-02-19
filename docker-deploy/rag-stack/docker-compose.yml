@@ -77,6 +77,7 @@ services:
     environment:
       - REDIS_URL=redis://rag-redis:6379/0
       - QDRANT_URL=http://rag-qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@rag-postgres:5432/${POSTGRES_DB}
       - NEXTCLOUD_URL=${NEXTCLOUD_URL}
       - WEBDAV_USER=${WEBDAV_USER}
@@ -97,6 +98,7 @@ services:
     environment:
       - REDIS_URL=redis://rag-redis:6379/0
       - QDRANT_URL=http://rag-qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@rag-postgres:5432/${POSTGRES_DB}
     networks:
       - platform-net
@@ -112,6 +114,7 @@ services:
       - postgres
     environment:
       - QDRANT_URL=http://rag-qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # LLM Configuration
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OLLAMA_URL=http://rag-ollama:11434
