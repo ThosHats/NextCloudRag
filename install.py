@@ -109,11 +109,89 @@ def get_public_ip():
         except:
             return "127.0.0.1"
 
+# --- Group Folder Automation Helpers ---
+
+def install_pyyaml():
+    try:
+        import yaml
+    except ImportError:
+        log("📦 Installing PyYAML for configuration parsing...")
+        run_command(f"{sys.executable} -m pip install pyyaml", check=False)
+
+def get_group_folder_id(folder_name):
+    try:
+        res = run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:list --output=json", check=False, capture_output=True)
+        if res.returncode == 0:
+            import json
+            data = json.loads(res.stdout)
+            for fid, info in data.items():
+                if info['mount_point'] == folder_name:
+                    return fid
+    except:
+        pass
+    return None
+
+def process_group_creation():
+    if not os.path.exists("config.yaml"): 
+        log("ℹ️ No config.yaml, skipping group creation.")
+        return
+    
+    install_pyyaml()
+    import yaml
+    with open("config.yaml") as f:
+        config = yaml.safe_load(f)
+    
+    log("🔄 Processing groups from config.yaml...")
+    for g in config.get('groups', []):
+        name = g['name']
+        folder = g['folder_name']
+        
+        # Create Group
+        run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ group:add {name}", check=False)
+        
+        # Create Folder
+        fid = get_group_folder_id(folder)
+        if not fid:
+            log(f"   -> Creating group folder: {folder}")
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:create \"{folder}\"", check=False)
+            fid = get_group_folder_id(folder)
+        
+        if fid:
+            # Assign Group
+            log(f"   -> Assigning group '{name}' to '{folder}' (Write/Share/Delete)")
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {name} write share delete", check=False)
+            
+            # Assign Admin (so we can see it)
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} admin write share delete", check=False)
+
+def assign_bot_to_folders(bot_user):
+    if not os.path.exists("config.yaml"): return
+    
+    import yaml
+    with open("config.yaml") as f:
+         config = yaml.safe_load(f)
+    
+    log(f"🔄 granting '{bot_user}' read access to group folders...")     
+    for g in config.get('groups', []):
+        folder = g['folder_name']
+        fid = get_group_folder_id(folder)
+        if fid:
+            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {bot_user} read", check=False)
+
 # --- Main Execution ---
 
 # Redirect logging
 with open(LOG_FILE, "a") as f:
     f.write(f"Starting installation at {time.ctime()}\n")
+
+# Load Configuration from config.yaml
+GLOBAL_CONFIG = {}
+if os.path.exists("config.yaml"):
+    install_pyyaml()
+    import yaml
+    with open("config.yaml") as f:
+        GLOBAL_CONFIG = yaml.safe_load(f)
+    log("✅ Loaded configuration from config.yaml")
 
 log("--- Step 1: Checking and Installing Prerequisites ---")
 
@@ -164,14 +242,22 @@ log(f"Detected Public IP: {public_ip}")
 
 base_domain = os.environ.get("BASE_DOMAIN")
 if not base_domain:
-    base_domain = input("Enter Base Domain (e.g., example.com): ").strip()
+    default_domain = GLOBAL_CONFIG.get("domain", "example.com")
+    prompt = f"Enter Base Domain (default: {default_domain}): "
+    base_domain = input(prompt).strip()
+    if not base_domain:
+        base_domain = default_domain
 
 nextcloud_domain = f"cloud.{base_domain}"
 rag_domain = f"rag.{base_domain}"
 
 acme_email = os.environ.get("ACME_EMAIL")
 if not acme_email:
-    acme_email = input("Enter Email for Let's Encrypt (e.g., admin@example.com): ").strip()
+    default_email = GLOBAL_CONFIG.get("email", "admin@example.com")
+    prompt = f"Enter Email for Let's Encrypt (default: {default_email}): "
+    acme_email = input(prompt).strip()
+    if not acme_email:
+        acme_email = default_email
 
 log("")
 log("Configuration:")
@@ -252,9 +338,19 @@ except:
 # Enable allow_local_remote_servers to ensure webhooks to local/public domains work
 log("Configuring Nextcloud to allow local remote servers (required for Webhooks)...")
 try:
-    run_command("docker exec -u www-data nextcloud-aio-nextcloud php occ config:system:set allow_local_remote_servers --value=true --type=bool")
-except:
-    log("⚠️ Warning: Could not set allow_local_remote_servers. Webhook registration might fail if the domain resolves locally.")
+    run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ config:system:set allow_local_remote_servers --value=true --type=bool", check=False)
+    log("   -> 'allow_local_remote_servers' enabled.")
+    
+    # Enable Group Folders app
+    log("   -> Enabling 'groupfolders' app...")
+    run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable groupfolders", check=False)
+    log("   -> 'groupfolders' enabled.")
+    
+    # Process Group Folders from Config
+    process_group_creation()
+    
+except Exception as e:
+    log(f"⚠️ Warning: Could not set allow_local_remote_servers or enable 'groupfolders': {e}")
 
 os.chdir("../..")
 
@@ -378,18 +474,41 @@ log(f"generated internal webhook secret: {nextcloud_webhook_secret}")
 log("")
 log("")
 log("----------------------------------------------------------------")
-log("SETUP: WebDAV / Bot User")
+log("SETUP: WebDAV / Bot User (Automated)")
 log("----------------------------------------------------------------")
-log("The RAG system needs to read files from Nextcloud via WebDAV.")
-log(f"1. Log in to Nextcloud at https://{nextcloud_domain} as ADMIN.")
-log("2. Create a new user named 'rag-bot' (save the password!).")
-log("3. Log out and LOG IN AGAIN as the new 'rag-bot' user.")
-log("4. Go to 'Personal Settings' -> 'Security'.")
-log("5. Scroll down to 'Devices & sessions'.")
-log("6. Enter 'RAG-App' in the 'App name' field and click 'Create new app password'.")
-log("7. IMPORTANT: Copy the password shown!")
-log("")
-webdav_password = input("Enter the Nextcloud App Password for the bot: ").strip()
+log("Checking for 'rag-bot' user...")
+
+webdav_password = ""
+import secrets
+
+# Check if user exists
+res = run_command("docker exec --user www-data nextcloud-aio-nextcloud php occ user:info rag-bot", check=False, capture_output=True)
+if res.returncode != 0:
+    # Create user
+    log("   -> 'rag-bot' not found. Creating automatically...")
+    gen_pass = secrets.token_urlsafe(20)
+    
+    # We pass the password via env variable into the container command
+    cmd = f"docker exec --user www-data -e OC_PASS='{gen_pass}' nextcloud-aio-nextcloud php occ user:add --password-from-env --display-name='RAG Bot' rag-bot"
+    
+    # Run creation
+    c_res = run_command(cmd, check=False)
+    
+    if c_res.returncode == 0:
+        log(f"✅ Created user 'rag-bot' successfully.")
+        webdav_password = gen_pass
+    else:
+        log("❌ Failed to create 'rag-bot' automatically.")
+else:
+    log("ℹ️ User 'rag-bot' already exists.")
+    webdav_password = input("   Enter the existing password for 'rag-bot': ").strip()
+
+# Grant Access to Group Folders
+assign_bot_to_folders("rag-bot")
+
+if not webdav_password:
+    log("⚠️ Could not generate or retrieve password automatically.")
+    webdav_password = input("Enter the Nextcloud Password for 'rag-bot' manually: ").strip()
 
 
 # OpenAI Configuration

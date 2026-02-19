@@ -43,8 +43,28 @@ def process_job(job: dict, pipeline: IndexingPipeline, nc_client: NextcloudClien
         # Webhook Listeners paths are often 'files/username/path/to/file'
         # We need the path relative to the user's root for WebDAV
         raw_path = node.get("path", "")
-        path_parts = raw_path.split("/", 2) 
-        file_path = path_parts[2] if len(path_parts) > 2 else raw_path
+        # Paths are typically: /files/{owner}/{path/to/file}
+        # e.g., /files/ThomasHartkens/My Documents/Note.md
+        # OR for shared files accessed by another user, the path in the event is absolute to the owner.
+        
+        # CRITICAL FIX: The event payload gives the path relative to the OWNER's file system,
+        # but 'rag-bot' sees it in its own WebDAV structure (often under 'Shared/' or just the root if accepted).
+        
+        # Since we don't know exactly where 'rag-bot' mounted the share, we need robust handling.
+        # IF the file is in a shared folder, the path coming from the event (owner's view) 
+        # might NOT match the path in rag-bot's WebDAV (receiver's view).
+        
+        parts = raw_path.strip("/").split("/")
+        
+        # Heuristic: Try to strip the first two segments (files/{owner}) to get the relative path
+        if len(parts) > 2 and parts[0] == "files":
+            # path_parts[2:] is the path inside the user's home
+            # e.g. "files/ThomasHartkens/Shared/Dokument.pdf" -> "Shared/Dokument.pdf"
+            relative_path = "/".join(parts[2:])
+        else:
+            relative_path = raw_path
+            
+        file_path = relative_path
         etag = node.get("etag") # Might not be present in all events
     else:
         # Legacy/Simple Webhooks App Format
