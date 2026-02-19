@@ -3,6 +3,8 @@ import logging
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from src.pipeline import RagPipeline
 
@@ -11,6 +13,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("haystack-api")
 
 app = FastAPI(title="Nextcloud RAG API")
+
+# Serve Static Files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def read_index():
+    return FileResponse('static/index.html')
+
 security = HTTPBearer()
 
 # Initialize Pipeline (Lazy load might be better, but global for simplicity)
