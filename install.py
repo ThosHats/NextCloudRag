@@ -116,7 +116,7 @@ def install_pyyaml():
         import yaml
     except ImportError:
         log("📦 Installing PyYAML for configuration parsing...")
-        run_command(f"{sys.executable} -m pip install pyyaml", check=False)
+        run_command(f"{sys.executable} -m pip install pyyaml --break-system-packages", check=False)
 
 def get_group_folder_id(folder_name):
     try:

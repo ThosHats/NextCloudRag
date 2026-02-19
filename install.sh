@@ -45,6 +45,7 @@ $SUDO apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
+    python3-yaml \
     curl \
     git \
     openssl \
@@ -52,12 +53,15 @@ $SUDO apt-get install -y \
     gnupg \
     lsb-release
 
-# Step 3: Global Python dependencies needed for the installer itself
-echo "--- Step 3: Installing Installer Dependencies ---"
-# We use --break-system-packages if on newer Debian/Ubuntu to allow pip install,
-# or simply ensure the user has the basic tools.
-$SUDO pip3 install --upgrade pip
-$SUDO pip3 install pyyaml || $SUDO pip3 install pyyaml --break-system-packages || echo "Warning: Could not install PyYAML via pip, install.py will try again internally."
+# Step 3: Global Python dependencies check
+echo "--- Step 3: Verifying Installer Dependencies ---"
+# PyYAML is now installed via apt (python3-yaml) in Step 2.
+if python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "✅ PyYAML is available."
+else
+    echo "⚠️ PyYAML not found. Attempting emergency install..."
+    $SUDO pip3 install pyyaml --break-system-packages || echo "❌ Failed to install PyYAML. The installer might fail."
+fi
 
 # Step 4: Handover to Python Installer
 echo ""
