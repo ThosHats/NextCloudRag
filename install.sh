@@ -242,20 +242,29 @@ register_webhook() {
     echo "   -> Registering event: $event..."
     
     # Use curl to send the request
-    HTTP_RESPONSE=$(curl -s -o response.json -w "%{http_code}" -X POST "${NEXTCLOUD_URL}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks" \
+    # separate capture of http code and exit status to prevent script crash
+    if curl -s -o response.json -w "%{http_code}" -X POST "${NEXTCLOUD_URL}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks" \
         -u "${admin_user}:${admin_pass}" \
         -H "OCS-APIRequest: true" \
         -H "Content-Type: application/json" \
-        -d "{\"uri\": \"${endpoint}\", \"event\": \"${event}\"}")
-
-    if [ "$HTTP_RESPONSE" -eq 200 ] || [ "$HTTP_RESPONSE" -eq 201 ]; then
-        echo "      ✅ Success."
+        -d "{\"uri\": \"${endpoint}\", \"event\": \"${event}\"}" > http_code.txt; then
+        
+        HTTP_RESPONSE=$(cat http_code.txt)
+        
+        if [ "$HTTP_RESPONSE" -eq 200 ] || [ "$HTTP_RESPONSE" -eq 201 ]; then
+            echo "      ✅ Success."
+        else
+            echo "      ❌ Failed (HTTP $HTTP_RESPONSE). API/Server Response:"
+            cat response.json
+            echo ""
+        fi
     else
-        echo "      ❌ Failed (HTTP $HTTP_RESPONSE). Response:"
-        cat response.json
-        echo ""
+        echo "      ❌ CRITICAL ERROR: Curl command failed to execute."
+        echo "      Could not reach Nextcloud at: ${NEXTCLOUD_URL}"
+        echo "      Please check if the URL is reachable from this server."
+        echo "      The script will continue, but you may need to add webhooks manually."
     fi
-    rm -f response.json
+    rm -f response.json http_code.txt
 }
 
 # Prompt for credentials
