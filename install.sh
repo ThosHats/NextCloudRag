@@ -232,55 +232,77 @@ echo "We will now automatically register the necessary webhooks via the Nextclou
 echo "Please provide your Nextcloud Admin credentials to authorize this action."
 echo ""
 
-# Function to register a webhook
-register_webhook() {
+# Function to register a webhook safely using Python
+register_webhook_python() {
     local endpoint="$1"
     local event="$2"
     local admin_user="$3"
     local admin_pass="$4"
+    local base_url="$5"
 
-    echo "   -> Registering event: $event..."
+    # Create a temporary python script
+    cat > register_hook.py <<EOF
+import urllib.request
+import urllib.error
+import json
+import ssl
+import sys
 
-    # Ensure URL is defined
-    if [ -z "$NEXTCLOUD_URL" ]; then
-        NEXTCLOUD_URL="https://${NEXTCLOUD_DOMAIN}"
-    fi
-
-    # Create detailed JSON payload in a file to handle escaping correctly
-    cat > webhook_payload.json <<EOF
-{
-  "uri": "${endpoint}",
-  "event": "${event}"
+url = "${base_url}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks"
+user = "${admin_user}"
+password = "${admin_pass}"
+payload = {
+    "uri": "${endpoint}",
+    "event": "${event}"
 }
+
+print(f"   -> Registering event: {payload['event']}...")
+
+# Prepare JSON data
+data = json.dumps(payload).encode('utf-8')
+
+# Prepare Request
+req = urllib.request.Request(url, data=data, method='POST')
+req.add_header('OCS-APIRequest', 'true')
+req.add_header('Content-Type', 'application/json')
+
+# Basic Auth
+auth_str = f"{user}:{password}"
+import base64
+encoded_auth = base64.b64encode(auth_str.encode()).decode()
+req.add_header('Authorization', f'Basic {encoded_auth}')
+
+# Context to ignore self-signed certs if necessary
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+
+try:
+    with urllib.request.urlopen(req, context=ctx) as response:
+        if response.status in [200, 201]:
+            print("      ✅ Success.")
+        else:
+            print(f"      ❌ Failed with status: {response.status}")
+except urllib.error.HTTPError as e:
+    print(f"      ❌ Failed (HTTP {e.code}). Response: {e.read().decode('utf-8')}")
+except Exception as e:
+    print(f"      ❌ Critical Error: {str(e)}")
 EOF
-    
-    # Use curl to send the request
-    # separate capture of http code and exit status to prevent script crash
-    if curl -s -o response.json -w "%{http_code}" -X POST "${NEXTCLOUD_URL}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks" \
-        -u "${admin_user}:${admin_pass}" \
-        -H "OCS-APIRequest: true" \
-        -H "Content-Type: application/json" \
-        -d @webhook_payload.json > http_code.txt; then
-        
-        HTTP_RESPONSE=$(cat http_code.txt)
-        
-        if [ "$HTTP_RESPONSE" -eq 200 ] || [ "$HTTP_RESPONSE" -eq 201 ]; then
-            echo "      ✅ Success."
-        else
-            echo "      ❌ Failed (HTTP $HTTP_RESPONSE). API/Server Response:"
-            cat response.json
-            echo ""
-            echo "      Debug: Sent Payload:"
-            cat webhook_payload.json
-            echo ""
-        fi
+
+    # Execute Python script
+    if command -v python3 &> /dev/null; then
+        python3 register_hook.py
     else
-        echo "      ❌ CRITICAL ERROR: Curl command failed to execute."
-        echo "      Could not reach Nextcloud at: ${NEXTCLOUD_URL}"
-        echo "      Please check if the URL is reachable from this server."
-        echo "      The script will continue, but you may need to add webhooks manually."
+        echo "⚠️  Python3 not found. Falling back to curl (might fail due to escaping)..."
+        # Fallback to simple curl if python is missing
+        curl -s -X POST "${base_url}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks" \
+            -u "${admin_user}:${admin_pass}" \
+            -H "OCS-APIRequest: true" \
+            -H "Content-Type: application/json" \
+            -d "{\"uri\":\"${endpoint}\",\"event\":\"${event//\\/\\\\}\"}"
+             # rough bash substitution attempt
     fi
-    rm -f response.json http_code.txt webhook_payload.json
+    rm -f register_hook.py
 }
 
 # Prompt for credentials
@@ -295,11 +317,16 @@ RAG_WEBHOOK_URL="https://${RAG_DOMAIN}/webhook/nextcloud"
 echo "Target Webhook URL: $RAG_WEBHOOK_URL"
 echo ""
 
-# Register the events
-# NOTE: We use single quotes here to preserve the double backslashes for JSON escaping
-register_webhook "$RAG_WEBHOOK_URL" 'OCP\\Files\\Events\\Node\\NodeCreatedEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
-register_webhook "$RAG_WEBHOOK_URL" 'OCP\\Files\\Events\\Node\\NodeWrittenEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
-register_webhook "$RAG_WEBHOOK_URL" 'OCP\\Files\\Events\\Node\\NodeDeletedEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS"
+# Ensure URL is defined
+if [ -z "$NEXTCLOUD_URL" ]; then
+    NEXTCLOUD_URL="https://${NEXTCLOUD_DOMAIN}"
+fi
+
+# Register the events using the Python Helper
+# We pass the raw strings; Python will handle the double backslash requirement for the Class Name
+register_webhook_python "$RAG_WEBHOOK_URL" 'OCP\Files\Events\Node\NodeCreatedEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS" "$NEXTCLOUD_URL"
+register_webhook_python "$RAG_WEBHOOK_URL" 'OCP\Files\Events\Node\NodeWrittenEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS" "$NEXTCLOUD_URL"
+register_webhook_python "$RAG_WEBHOOK_URL" 'OCP\Files\Events\Node\NodeDeletedEvent' "$NC_ADMIN_USER" "$NC_ADMIN_PASS" "$NEXTCLOUD_URL"
 
 # Verify Webhooks
 echo ""
