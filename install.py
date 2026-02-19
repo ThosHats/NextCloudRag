@@ -302,7 +302,7 @@ def register_webhook(endpoint, event, user, password, base_url):
         "event": event,
         "httpMethod": "POST",
         "authMethod": "header",
-        "auth": {"X-Nextcloud-Token": "insecure-placeholder-for-now"}
+        "authData": {"X-Nextcloud-Token": "insecure-placeholder-for-now"}
     }
     
     data = json.dumps(payload).encode('utf-8')
