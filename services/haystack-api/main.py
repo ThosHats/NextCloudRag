@@ -21,7 +21,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def read_index():
     return FileResponse('static/index.html')
 
-security = HTTPBearer()
+# Allow missing token for dev mode (auto_error=False)
+security = HTTPBearer(auto_error=False)
 
 # Initialize Pipeline (Lazy load might be better, but global for simplicity)
 try:
@@ -33,7 +34,10 @@ except Exception as e:
 
 # OIDC Configuration
 OIDC_ISSUER = os.getenv("OIDC_ISSUER")
+if OIDC_ISSUER == "none": OIDC_ISSUER = None
+
 OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID")
+if OIDC_CLIENT_ID == "none": OIDC_CLIENT_ID = None
 
 class ChatRequest(BaseModel):
     query: str
@@ -49,22 +53,27 @@ class ChatResponse(BaseModel):
     answer: str
     sources: List[Source] = []
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Security(security)):
     """
     Mockable Token Verification.
-    In prod, using python-jose to verify JWT against OIDC_ISSUER jwks.json.
+    If OIDC_ISSUER is not set, we allow unauthenticated access (admin role).
     """
-    token = credentials.credentials
+    # 1. Dev Mode / No Auth
     if not OIDC_ISSUER:
-        # Dev mode / No auth configured
-        logger.warning("OIDC_ISSUER not set, skipping token verification (DEV MODE)")
-        return {"sub": "dev-user", "roles": ["admin"]}
+        # Check if token provided anyway? usually ignore.
+        return {"sub": "anonymous-admin", "roles": ["admin"]}
     
-    # Placeholder for real JWT verification logic
-    # try:
-    #     header = jwt.get_unverified_header(token)
-    #     ... verify signature ...
-    # except ...
+    # 2. Auth Required but missing
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 3. Verify Token (Placeholder)
+    token = credentials.credentials
+    # In prod: jwt.decode(token, ...)
     
     return {"sub": "user", "token_preview": token[:10] + "..."}
 
