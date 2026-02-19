@@ -240,6 +240,11 @@ register_webhook() {
     local admin_pass="$4"
 
     echo "   -> Registering event: $event..."
+
+    # Ensure URL is defined
+    if [ -z "$NEXTCLOUD_URL" ]; then
+        NEXTCLOUD_URL="https://${NEXTCLOUD_DOMAIN}"
+    fi
     
     # Use curl to send the request
     # separate capture of http code and exit status to prevent script crash
@@ -287,10 +292,14 @@ register_webhook "$RAG_WEBHOOK_URL" "OCP\\Files\\Events\\Node\\NodeDeletedEvent"
 # Verify Webhooks
 echo ""
 echo "Verifying registered webhooks..."
+if [ -z "$NEXTCLOUD_URL" ]; then
+    NEXTCLOUD_URL="https://${NEXTCLOUD_DOMAIN}"
+fi
+
 VERIFY_RESPONSE=$(curl -s -X GET "${NEXTCLOUD_URL}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks" \
     -u "${NC_ADMIN_USER}:${NC_ADMIN_PASS}" \
     -H "OCS-APIRequest: true" \
-    -H "Content-Type: application/json")
+    -H "Content-Type: application/json" || echo "curl failed")
 
 if echo "$VERIFY_RESPONSE" | grep -q "$RAG_WEBHOOK_URL"; then
     echo "✅ Verification Successful: Webhooks are active."
