@@ -193,9 +193,6 @@ def process_group_creation():
             # Assign Group (write, share, delete as positional arguments)
             log(f"      Assigning group '{name}' with Write/Share/Delete permissions...")
             run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} {name} write share delete", check=False)
-            
-            # Assign Admin
-            run_command(f"docker exec --user www-data nextcloud-aio-nextcloud php occ groupfolders:group {fid} admin write share delete", check=False)
         else:
             log(f"      ❌ ERROR: Could not determine Folder ID for '{folder}'")
 
