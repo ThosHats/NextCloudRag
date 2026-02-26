@@ -108,12 +108,21 @@ async def chat(request: ChatRequest, user: dict = Depends(verify_token)):
         documents = full_result["retriever"]["documents"]
         
         sources = []
+        seen = set()
         for doc in documents:
-            sources.append(Source(
-                title=doc.meta.get("path", "Unknown").split("/")[-1],
-                nc_path=doc.meta.get("path", ""),
-                score=doc.score or 0.0
-            ))
+            nc_path = doc.meta.get("path", "")
+            source_key = (getattr(doc, "id", None), nc_path)
+            if source_key in seen:
+                continue
+            seen.add(source_key)
+
+            sources.append(
+                Source(
+                    title=nc_path.split("/")[-1] if nc_path else "Unknown",
+                    nc_path=nc_path,
+                    score=doc.score or 0.0
+                )
+            )
 
         return ChatResponse(answer=answer, sources=sources)
 

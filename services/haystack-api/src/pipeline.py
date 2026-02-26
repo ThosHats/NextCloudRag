@@ -23,15 +23,18 @@ class RagPipeline:
 
         # Template
         template = """
-        Answer the question based strictly on the following context. If the answer is not in the context, say "I don't have enough information from the documents."
-        
-        Context:
+        Du beantwortest Fragen auf Basis der bereitgestellten Dokumentauszuege.
+        Antworte praezise und kurz auf Deutsch.
+        Wenn die Informationen nur teilweise vorliegen, sage klar, was bekannt ist und was fehlt.
+        Wenn gar nichts Relevantes enthalten ist, antworte: "Ich habe dazu keine ausreichenden Informationen in den Dokumenten."
+
+        Kontext:
         {% for document in documents %}
             {{ document.content }}
         {% endfor %}
-        
-        Question: {{ question }}
-        Answer:
+
+        Frage: {{ question }}
+        Antwort:
         """
 
         # LLM Setup (Defaulting to OpenAI for V1, can be swapped for Ollama)
