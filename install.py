@@ -9,6 +9,7 @@ import urllib.request
 import urllib.error
 import ssl
 import base64
+import xml.etree.ElementTree as ET
 from getpass import getpass
 
 # ==========================================
@@ -404,6 +405,11 @@ if not postgres_password:
     # Python fallback if openssl fails
     import secrets
     postgres_password = secrets.token_hex(20)
+
+qdrant_api_key = subprocess.run("openssl rand -hex 32", shell=True, capture_output=True, text=True).stdout.strip()
+if not qdrant_api_key:
+    import secrets
+    qdrant_api_key = secrets.token_hex(32)
 log("✅ Database passwords generated.")
 
 
@@ -466,9 +472,82 @@ def register_webhook(endpoint, event, user, password, base_url):
     except Exception as e:
         print(f"      ❌ Critical Error: {str(e)}")
 
-register_webhook(rag_webhook_url, "OCP\\Files\\Events\\Node\\NodeCreatedEvent", nc_admin_user, nc_admin_pass, nextcloud_url)
-register_webhook(rag_webhook_url, "OCP\\Files\\Events\\Node\\NodeWrittenEvent", nc_admin_user, nc_admin_pass, nextcloud_url)
-register_webhook(rag_webhook_url, "OCP\\Files\\Events\\Node\\NodeDeletedEvent", nc_admin_user, nc_admin_pass, nextcloud_url)
+def _ocs_auth_header(user, password):
+    auth_str = f"{user}:{password}"
+    encoded_auth = base64.b64encode(auth_str.encode()).decode()
+    return f"Basic {encoded_auth}"
+
+def list_webhooks(user, password, base_url):
+    url = f"{base_url}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks"
+    req = urllib.request.Request(url, method='GET')
+    req.add_header('OCS-APIRequest', 'true')
+    req.add_header('Authorization', _ocs_auth_header(user, password))
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    with urllib.request.urlopen(req, context=ctx) as response:
+        body = response.read().decode('utf-8')
+
+    hooks = []
+    try:
+        root = ET.fromstring(body)
+        for elem in root.findall(".//data/element"):
+            hooks.append({
+                "id": (elem.findtext("id") or "").strip(),
+                "uri": (elem.findtext("uri") or "").strip(),
+                "event": (elem.findtext("event") or "").strip(),
+                "method": (elem.findtext("httpMethod") or "").strip().upper()
+            })
+    except Exception as e:
+        log(f"⚠️ Could not parse webhook list XML: {e}")
+
+    return hooks
+
+def delete_webhook(webhook_id, user, password, base_url):
+    url = f"{base_url}/ocs/v2.php/apps/webhook_listeners/api/v1/webhooks/{webhook_id}"
+    req = urllib.request.Request(url, method='DELETE')
+    req.add_header('OCS-APIRequest', 'true')
+    req.add_header('Authorization', _ocs_auth_header(user, password))
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    with urllib.request.urlopen(req, context=ctx) as response:
+        return response.status in [200, 204]
+
+def ensure_single_webhook(endpoint, event, user, password, base_url):
+    hooks = list_webhooks(user, password, base_url)
+    matching = [h for h in hooks if h["uri"] == endpoint and h["event"] == event and h["method"] == "POST"]
+
+    if len(matching) == 0:
+        register_webhook(endpoint, event, user, password, base_url)
+        return
+
+    if len(matching) > 1:
+        # Keep the oldest/smallest id and remove duplicates.
+        matching_sorted = sorted(
+            matching,
+            key=lambda h: int(h["id"]) if h["id"].isdigit() else 10**9
+        )
+        keep = matching_sorted[0]["id"]
+        print(f"   -> Found {len(matching)} duplicate registrations for {event}, keeping id={keep} and deleting extras...")
+        for dup in matching_sorted[1:]:
+            try:
+                if dup["id"]:
+                    ok = delete_webhook(dup["id"], user, password, base_url)
+                    if ok:
+                        print(f"      ✅ Deleted duplicate webhook id={dup['id']}")
+            except Exception as e:
+                print(f"      ⚠️ Could not delete duplicate webhook id={dup['id']}: {e}")
+    else:
+        print(f"   -> Webhook for {event} already exists (id={matching[0]['id']}).")
+
+ensure_single_webhook(rag_webhook_url, "OCP\\Files\\Events\\Node\\NodeCreatedEvent", nc_admin_user, nc_admin_pass, nextcloud_url)
+ensure_single_webhook(rag_webhook_url, "OCP\\Files\\Events\\Node\\NodeWrittenEvent", nc_admin_user, nc_admin_pass, nextcloud_url)
+ensure_single_webhook(rag_webhook_url, "OCP\\Files\\Events\\Node\\NodeDeletedEvent", nc_admin_user, nc_admin_pass, nextcloud_url)
 
 
 # Verify Webhooks
@@ -605,6 +684,7 @@ WEBDAV_PASSWORD={webdav_password}
 POSTGRES_USER=rag_user
 POSTGRES_PASSWORD={postgres_password}
 POSTGRES_DB=rag_metadata
+QDRANT_API_KEY={qdrant_api_key}
 
 # Authentication (OIDC)
 OIDC_ISSUER={oidc_issuer}

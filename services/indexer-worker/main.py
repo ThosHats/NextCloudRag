@@ -56,10 +56,12 @@ def process_job(job: dict, pipeline: IndexingPipeline, nc_client: NextcloudClien
         
         parts = raw_path.strip("/").split("/")
         
-        # Heuristic: Try to strip the first two segments (files/{owner}) to get the relative path
+        # Normalize both common Nextcloud event path formats:
+        # 1) /files/{owner}/{path}
+        # 2) /{owner}/files/{path}
         if len(parts) > 2 and parts[0] == "files":
-            # path_parts[2:] is the path inside the user's home
-            # e.g. "files/ThomasHartkens/Shared/Dokument.pdf" -> "Shared/Dokument.pdf"
+            relative_path = "/".join(parts[2:])
+        elif len(parts) > 2 and parts[1] == "files":
             relative_path = "/".join(parts[2:])
         else:
             relative_path = raw_path
