@@ -57,6 +57,8 @@ services:
     environment:
       - REDIS_URL=redis://rag-redis:6379/0
       - NEXTCLOUD_WEBHOOK_SECRET=${NEXTCLOUD_WEBHOOK_SECRET}
+      - INDEXER_QUEUE_NAME=rag_indexer_queue
+      - ACL_QUEUE_NAME=rag_acl_queue
     networks:
       - platform-net
     labels:
@@ -76,6 +78,7 @@ services:
       - redis
     environment:
       - REDIS_URL=redis://rag-redis:6379/0
+      - INDEXER_QUEUE_NAME=rag_indexer_queue
       - QDRANT_URL=http://rag-qdrant:6333
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@rag-postgres:5432/${POSTGRES_DB}
@@ -97,6 +100,7 @@ services:
       - redis
     environment:
       - REDIS_URL=redis://rag-redis:6379/0
+      - ACL_QUEUE_NAME=rag_acl_queue
       - QDRANT_URL=http://rag-qdrant:6333
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@rag-postgres:5432/${POSTGRES_DB}

@@ -14,7 +14,7 @@ logger = logging.getLogger("indexer-worker")
 
 # Configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-QUEUE_NAME = "rag_queue"
+QUEUE_NAME = os.getenv("INDEXER_QUEUE_NAME", "rag_indexer_queue")
 NEXTCLOUD_URL = os.getenv("NEXTCLOUD_URL")
 WEBDAV_USER = os.getenv("WEBDAV_USER")
 WEBDAV_PASSWORD = os.getenv("WEBDAV_PASSWORD")
